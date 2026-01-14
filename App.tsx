@@ -60,7 +60,7 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
-                <Route path="/verify" element={<VerifyEmail />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/*" element={<ProtectedLayout />} />
               </Routes>
             </Router>

@@ -32,8 +32,8 @@ const Register = () => {
     const result = await register(name, email, password);
     
     if (result.success) {
-      // Navigate to verification page with email
-      navigate(`/verify?email=${encodeURIComponent(email)}`);
+      // Direct access to dashboard (Auto login in context)
+      navigate('/');
     } else {
       setError(result.message || 'Đăng ký thất bại.');
     }
