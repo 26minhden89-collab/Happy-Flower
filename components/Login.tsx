@@ -16,11 +16,11 @@ const Login = () => {
     setError('');
     setIsSubmitting(true);
 
-    const success = await login(email, password);
-    if (success) {
+    const result = await login(email, password);
+    if (result.success) {
       navigate('/');
     } else {
-      setError('Email hoặc mật khẩu không chính xác.');
+      setError(result.message || 'Email hoặc mật khẩu không chính xác.');
     }
     setIsSubmitting(false);
   };

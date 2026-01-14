@@ -16,6 +16,8 @@ export interface User {
   password?: string; // Only for verification mock
   role: 'admin' | 'staff';
   avatar?: string;
+  isVerified?: boolean;
+  verificationCode?: string;
 }
 
 export interface Customer {

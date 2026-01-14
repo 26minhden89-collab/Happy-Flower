@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Product } from '../types';
 import { MOCK_PRODUCTS } from '../services/mockData';
+import { useAuth } from './AuthContext';
 
 interface ProductContextType {
   products: Product[];
@@ -12,22 +13,49 @@ interface ProductContextType {
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
 export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
+  const { user } = useAuth();
+  const [products, setProductsState] = useState<Product[]>([]);
+
+  // Load data for specific user
+  useEffect(() => {
+    if (user) {
+      const storageKey = `happy_flower_products_${user.id}`;
+      const storedData = localStorage.getItem(storageKey);
+      if (storedData) {
+        setProductsState(JSON.parse(storedData));
+      } else {
+        setProductsState(MOCK_PRODUCTS);
+        localStorage.setItem(storageKey, JSON.stringify(MOCK_PRODUCTS));
+      }
+    } else {
+      setProductsState([]);
+    }
+  }, [user]);
+
+  const saveProducts = (newProducts: Product[]) => {
+    setProductsState(newProducts);
+    if (user) {
+      const storageKey = `happy_flower_products_${user.id}`;
+      localStorage.setItem(storageKey, JSON.stringify(newProducts));
+    }
+  };
 
   const addProduct = (newProductData: Omit<Product, 'id'>) => {
     const newProduct: Product = {
       ...newProductData,
       id: Math.random().toString(36).substr(2, 9),
     };
-    setProducts(prev => [newProduct, ...prev]);
+    saveProducts([newProduct, ...products]);
   };
 
   const updateProduct = (id: string, updatedFields: Partial<Product>) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedFields } : p));
+    const updated = products.map(p => p.id === id ? { ...p, ...updatedFields } : p);
+    saveProducts(updated);
   };
 
   const deleteProduct = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
+    const updated = products.filter(p => p.id !== id);
+    saveProducts(updated);
   };
 
   return (

@@ -29,11 +29,13 @@ const Register = () => {
     }
 
     setIsSubmitting(true);
-    const success = await register(name, email, password);
-    if (success) {
-      navigate('/');
+    const result = await register(name, email, password);
+    
+    if (result.success) {
+      // Navigate to verification page with email
+      navigate(`/verify?email=${encodeURIComponent(email)}`);
     } else {
-      setError('Email này đã được sử dụng.');
+      setError(result.message || 'Đăng ký thất bại.');
     }
     setIsSubmitting(false);
   };

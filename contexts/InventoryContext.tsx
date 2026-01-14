@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { InventoryItem } from '../types';
 import { MOCK_INVENTORY } from '../services/mockData';
+import { useAuth } from './AuthContext';
 
 interface InventoryContextType {
   inventory: InventoryItem[];
@@ -12,7 +13,32 @@ interface InventoryContextType {
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [inventory, setInventory] = useState<InventoryItem[]>(MOCK_INVENTORY);
+  const { user } = useAuth();
+  const [inventory, setInventoryState] = useState<InventoryItem[]>([]);
+
+  // Load data for specific user
+  useEffect(() => {
+    if (user) {
+      const storageKey = `happy_flower_inventory_${user.id}`;
+      const storedData = localStorage.getItem(storageKey);
+      if (storedData) {
+        setInventoryState(JSON.parse(storedData));
+      } else {
+        setInventoryState(MOCK_INVENTORY);
+        localStorage.setItem(storageKey, JSON.stringify(MOCK_INVENTORY));
+      }
+    } else {
+      setInventoryState([]);
+    }
+  }, [user]);
+
+  const saveInventory = (newInventory: InventoryItem[]) => {
+    setInventoryState(newInventory);
+    if (user) {
+        const storageKey = `happy_flower_inventory_${user.id}`;
+        localStorage.setItem(storageKey, JSON.stringify(newInventory));
+    }
+  };
 
   const addItem = (newItem: Omit<InventoryItem, 'id' | 'updatedAt'>) => {
     const item: InventoryItem = {
@@ -20,19 +46,19 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
       id: Math.random().toString(36).substr(2, 9),
       updatedAt: new Date().toISOString(),
     };
-    setInventory([item, ...inventory]);
+    saveInventory([item, ...inventory]);
   };
 
   const updateItem = (id: string, updatedFields: Partial<InventoryItem>) => {
-    setInventory((prev) =>
-      prev.map((item) =>
+    const updatedInv = inventory.map((item) =>
         item.id === id ? { ...item, ...updatedFields, updatedAt: new Date().toISOString() } : item
-      )
     );
+    saveInventory(updatedInv);
   };
 
   const deleteItem = (id: string) => {
-    setInventory((prev) => prev.filter((item) => item.id !== id));
+    const updatedInv = inventory.filter((item) => item.id !== id);
+    saveInventory(updatedInv);
   };
 
   return (

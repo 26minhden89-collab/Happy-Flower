@@ -7,6 +7,7 @@ import OrderList from './components/OrderList';
 import InventoryList from './components/InventoryList';
 import Login from './components/Login';
 import Register from './components/Register';
+import VerifyEmail from './components/VerifyEmail';
 import { OrderProvider } from './contexts/OrderContext';
 import { InventoryProvider } from './contexts/InventoryContext';
 import { ProductProvider } from './contexts/ProductContext';
@@ -59,6 +60,7 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/verify" element={<VerifyEmail />} />
                 <Route path="/*" element={<ProtectedLayout />} />
               </Routes>
             </Router>
