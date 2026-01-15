@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Printer, MessageSquare, MapPin, Phone, Mail, Package, Sparkles, Truck, Edit } from 'lucide-react';
-import { Order } from '../types';
+import { ArrowLeft, Printer, MessageSquare, MapPin, Phone, Mail, Package, Sparkles, Truck, Edit, CheckCircle } from 'lucide-react';
+import { Order, OrderStatus } from '../types';
 import { analyzeOrder } from '../services/geminiService';
 import ReactMarkdown from 'react-markdown';
+import { useOrder } from '../contexts/OrderContext';
 
 interface OrderDetailProps {
   order: Order;
@@ -12,6 +13,7 @@ interface OrderDetailProps {
 const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { orders, setOrders } = useOrder();
 
   const handleAIAnalyze = async () => {
     setIsAnalyzing(true);
@@ -20,11 +22,18 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
     setIsAnalyzing(false);
   };
 
+  const handleStatusChange = (newStatus: OrderStatus) => {
+    const updatedOrders = orders.map(o => o.id === order.id ? {...o, status: newStatus} : o);
+    setOrders(updatedOrders);
+  };
+
   // Logic mới: TotalAmount (COD) = Tiền hàng - Ship
   // Do đó, Tiền hàng = TotalAmount + Ship
   const productTotal = order.totalAmount + order.shippingFee; 
   // Thực nhận = Tiền hàng - Ship = TotalAmount (COD)
   const netReceived = order.totalAmount; 
+  
+  const isReconciled = order.status === OrderStatus.RECONCILIATION;
 
   return (
     <div className="p-6 animate-fade-in pb-20">
@@ -43,9 +52,18 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
               </h1>
               <span className="text-gray-400">|</span>
               <span className="text-lg text-gray-600">{order.trackingNumber}</span>
-              <span className="px-3 py-1 text-sm font-normal rounded-full bg-orange-100 text-orange-700 border border-orange-200 ml-2">
-                {order.status}
-              </span>
+              <div className="ml-2 relative">
+                  <select 
+                      value={order.status}
+                      onChange={(e) => handleStatusChange(e.target.value as OrderStatus)}
+                      className={`appearance-none pl-3 pr-8 py-1 text-sm font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 ${isReconciled ? 'bg-purple-100 text-purple-700 border-purple-200 focus:ring-purple-500' : 'bg-orange-100 text-orange-700 border-orange-200 focus:ring-orange-500'}`}
+                  >
+                      {Object.values(OrderStatus).map(s => (
+                          <option key={s} value={s}>{s}</option>
+                      ))}
+                  </select>
+                  <Edit className="w-3 h-3 absolute right-3 top-2 pointer-events-none opacity-50" />
+              </div>
             </div>
             <p className="text-sm text-gray-500 mt-1">Ngày tạo: {new Date(order.createdAt).toLocaleString('vi-VN')}</p>
           </div>
@@ -68,10 +86,6 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
             <Printer className="w-4 h-4 mr-2" />
             In vận đơn
           </button>
-          <button className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 shadow-sm">
-            <Edit className="w-4 h-4 mr-2" />
-            Cập nhật trạng thái
-          </button>
         </div>
       </div>
 
@@ -88,6 +102,16 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
                  <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
               </div>
             </div>
+          )}
+          
+          {isReconciled && (
+              <div className="bg-green-50 border border-green-200 p-4 rounded-xl flex items-center shadow-sm">
+                  <CheckCircle className="w-6 h-6 text-green-600 mr-3" />
+                  <div>
+                      <h4 className="font-bold text-green-800">Đơn hàng đã Đối soát Doanh thu</h4>
+                      <p className="text-sm text-green-700">Doanh thu <b>{(netReceived - order.shippingFee).toLocaleString('vi-VN')} đ</b> đã được ghi nhận vào báo cáo.</p>
+                  </div>
+              </div>
           )}
 
           {/* Customer Info */}
@@ -129,19 +153,19 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
                     <td className="pt-4 text-right pr-2 text-sm font-medium text-gray-800">{productTotal.toLocaleString('vi-VN')} đ</td>
                   </tr>
                   <tr>
-                    <td colSpan={3} className="pt-2 text-right text-sm text-gray-500">Phí vận chuyển:</td>
-                    <td className="pt-2 text-right pr-2 text-sm font-medium text-gray-800">{order.shippingFee.toLocaleString('vi-VN')} đ</td>
+                    <td colSpan={3} className="pt-2 text-right text-sm text-gray-500">Phí vận chuyển (Shop chịu):</td>
+                    <td className="pt-2 text-right pr-2 text-sm font-medium text-red-500">-{order.shippingFee.toLocaleString('vi-VN')} đ</td>
                   </tr>
                   <tr>
-                    <td colSpan={3} className="pt-2 text-right text-base font-bold text-gray-800">Tiền Đơn Hàng:</td>
+                    <td colSpan={3} className="pt-2 text-right text-base font-bold text-gray-800">Tổng thu khách (COD):</td>
                     <td className="pt-2 text-right pr-2 text-base font-bold text-orange-600">
                       {order.totalAmount.toLocaleString('vi-VN')} đ
                     </td>
                   </tr>
                   <tr className="bg-green-50">
-                    <td colSpan={3} className="pt-2 pb-2 text-right text-sm font-bold text-green-700">Tổng tiền COD:</td>
+                    <td colSpan={3} className="pt-2 pb-2 text-right text-sm font-bold text-green-700">Thực nhận (COD - Ship):</td>
                     <td className="pt-2 pb-2 text-right pr-2 text-sm font-bold text-green-700">
-                      {netReceived.toLocaleString('vi-VN')} đ
+                      {(order.totalAmount - order.shippingFee).toLocaleString('vi-VN')} đ
                     </td>
                   </tr>
                 </tfoot>
@@ -157,14 +181,13 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
                    <p className="text-sm font-bold text-gray-800">Đơn hàng đã được tạo</p>
                    <p className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleString('vi-VN')}</p>
                 </div>
-                {order.status !== 'Chờ lấy hàng' && (
-                  <div className="relative">
-                    <div className="absolute -left-[21px] top-1 w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-sm"></div>
-                    <p className="text-sm font-bold text-gray-800">Đã bàn giao cho đơn vị vận chuyển</p>
-                    <p className="text-xs text-gray-500">26/10/2023 14:00</p>
-                  </div>
+                {order.status !== 'Chưa lên đơn' && (
+                   <div className="relative">
+                     <div className="absolute -left-[21px] top-1 w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-sm"></div>
+                     <p className="text-sm font-bold text-gray-800">Trạng thái hiện tại: {order.status}</p>
+                     <p className="text-xs text-gray-500">Cập nhật mới nhất</p>
+                   </div>
                 )}
-                 {/* Mock timeline items */}
              </div>
           </div>
         </div>
@@ -201,7 +224,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack }) => {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-800">{order.customer.name}</p>
-                  <p className="text-xs text-gray-500">Khách hàng mới</p>
+                  <p className="text-xs text-gray-500">Khách hàng</p>
                 </div>
               </div>
               

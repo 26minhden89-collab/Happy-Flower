@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import OrderList from './components/OrderList';
 import InventoryList from './components/InventoryList';
 import FinanceList from './components/FinanceList';
+import ProductList from './components/ProductList';
 import { OrderProvider } from './contexts/OrderContext';
 import { InventoryProvider } from './contexts/InventoryContext';
 import { ProductProvider } from './contexts/ProductContext';
@@ -38,6 +39,7 @@ function App() {
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/orders" element={<OrderList />} />
+                  <Route path="/products" element={<ProductList />} />
                   <Route path="/inventory" element={<InventoryList />} />
                   <Route path="/finance" element={<FinanceList />} />
                   <Route path="*" element={<Navigate to="/" replace />} />

@@ -3,9 +3,8 @@ import { Transaction } from '../types';
 
 interface FinanceContextType {
   transactions: Transaction[]; 
-  addExpense: (transaction: Omit<Transaction, 'id' | 'type'>) => void;
+  addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
   deleteTransaction: (id: string) => void;
-  getTotalExpenses: () => number;
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
@@ -30,10 +29,9 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newTransactions));
   };
 
-  const addExpense = (transactionData: Omit<Transaction, 'id' | 'type'>) => {
+  const addTransaction = (transactionData: Omit<Transaction, 'id'>) => {
     const newTransaction: Transaction = {
       ...transactionData,
-      type: 'EXPENSE',
       id: Math.random().toString(36).substr(2, 9),
     };
     saveTransactions([newTransaction, ...transactions]);
@@ -44,14 +42,8 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     saveTransactions(newTransactions);
   };
 
-  const getTotalExpenses = () => {
-    return transactions
-      .filter(t => t.type === 'EXPENSE')
-      .reduce((sum, t) => sum + t.amount, 0);
-  };
-
   return (
-    <FinanceContext.Provider value={{ transactions, addExpense, deleteTransaction, getTotalExpenses }}>
+    <FinanceContext.Provider value={{ transactions, addTransaction, deleteTransaction }}>
       {children}
     </FinanceContext.Provider>
   );

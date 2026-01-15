@@ -43,11 +43,13 @@ export interface Product {
   name: string;
   price: number;
   image?: string;
+  notes?: string; // Ghi chú sản phẩm
   recipe: ProductRecipe[]; // Danh sách vật tư cấu thành sản phẩm
 }
 
 export interface OrderItem {
   id: string;
+  productId?: string; // Link to Product ID for recipe lookup
   productName: string;
   quantity: number;
   price: number;
@@ -65,16 +67,17 @@ export interface Order {
   createdAt: string;
   totalAmount: number; // Đây là tổng tiền COD (Tiền hàng + tiền khách trả ship nếu có)
   shippingFee: number; // Phí ship shop phải trả cho bên vận chuyển
+  shippingPayer: 'SHOP' | 'CUSTOMER'; // Ai chịu phí ship?
   paymentMethod: 'COD' | 'Bank Transfer' | 'Momo';
   notes?: string;
   deliveryUnit?: string;
   deliveryCode?: string;
 }
 
-// --- FINANCE TYPES (EXPENSE ONLY) ---
+// --- FINANCE TYPES (STRICT SEPARATION) ---
 
-export type TransactionType = 'EXPENSE'; // Income is calculated from Orders
-export type TransactionCategory = 'MATERIAL_PURCHASE' | 'OTHER';
+export type TransactionType = 'EXPENSE' | 'INCOME'; 
+export type TransactionCategory = 'MATERIAL_PURCHASE' | 'OTHER' | 'SALES' | 'OTHER_INCOME';
 
 export interface Transaction {
   id: string;

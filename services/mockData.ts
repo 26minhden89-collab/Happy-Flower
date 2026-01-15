@@ -72,6 +72,7 @@ export const MOCK_ORDERS: Order[] = [
     createdAt: '2023-10-25T08:30:00Z',
     totalAmount: 490000, // (500k + 20k) - 30k ship
     shippingFee: 30000,
+    shippingPayer: 'SHOP',
     paymentMethod: 'COD',
     notes: 'Giao giờ hành chính, gọi trước khi giao.',
     deliveryUnit: 'Giao Hàng Nhanh',
@@ -96,6 +97,7 @@ export const MOCK_ORDERS: Order[] = [
     createdAt: '2023-10-26T09:15:00Z',
     totalAmount: 820000, // 850k - 30k ship
     shippingFee: 30000,
+    shippingPayer: 'SHOP',
     paymentMethod: 'Bank Transfer',
     notes: 'Tặng sinh nhật, ghi thiệp: Chúc mừng sinh nhật em.',
     deliveryUnit: 'Giao Hàng Tiết Kiệm',
@@ -120,6 +122,7 @@ export const MOCK_ORDERS: Order[] = [
     createdAt: '2023-10-24T14:20:00Z',
     totalAmount: 575000, // 600k - 25k ship
     shippingFee: 25000,
+    shippingPayer: 'SHOP',
     paymentMethod: 'Momo',
     deliveryUnit: 'Ahamove',
     deliveryCode: 'AHA998811'
@@ -143,6 +146,7 @@ export const MOCK_ORDERS: Order[] = [
     createdAt: '2023-10-27T10:00:00Z',
     totalAmount: 500000,
     shippingFee: 0,
+    shippingPayer: 'SHOP',
     paymentMethod: 'COD',
     notes: 'Giao nhanh',
     deliveryUnit: 'Viettel Post',

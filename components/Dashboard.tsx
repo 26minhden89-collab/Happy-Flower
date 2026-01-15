@@ -1,15 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Package, CheckCircle, DollarSign, Wallet, Calendar, X, ArrowRight, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Package, CheckCircle, DollarSign, Wallet, Calendar, X, ArrowRight, TrendingUp, Info, ShoppingCart } from 'lucide-react';
 import { OrderStatus, Order, Transaction } from '../types';
 import { useOrder } from '../contexts/OrderContext';
 import { useFinance } from '../contexts/FinanceContext';
-import { useInventory } from '../contexts/InventoryContext';
 
 const Dashboard = () => {
   const { orders } = useOrder();
   const { transactions } = useFinance();
-  const { inventory } = useInventory();
 
   // Date Filter State
   const [dateRange, setDateRange] = useState({
@@ -17,13 +15,9 @@ const Dashboard = () => {
     end: new Date().toISOString().split('T')[0] // Today
   });
 
-  // Drill-down View State
-  const [activeView, setActiveView] = useState<'OVERVIEW' | 'REVENUE_DETAILS' | 'EXPENSE_DETAILS' | 'PROFIT_DETAILS'>('OVERVIEW');
-
   // --- FILTER LOGIC ---
   const startDate = new Date(dateRange.start);
   const endDate = new Date(dateRange.end);
-  // Adjust end date to include the full day
   endDate.setHours(23, 59, 59, 999);
 
   const isDateInRange = (dateString: string) => {
@@ -34,101 +28,72 @@ const Dashboard = () => {
   const filteredOrders = useMemo(() => orders.filter(o => isDateInRange(o.createdAt)), [orders, dateRange]);
   const filteredTransactions = useMemo(() => transactions.filter(t => isDateInRange(t.date)), [transactions, dateRange]);
 
-  // --- CALCULATIONS ---
-  const totalOrdersCount = filteredOrders.length;
-  
-  // Reconciled Orders (Doanh thu)
-  const reconciledOrders = filteredOrders.filter(o => o.status === OrderStatus.RECONCILIATION);
-  const reconciledCount = reconciledOrders.length;
-  const totalRevenue = reconciledOrders.reduce((sum, o) => sum + (o.totalAmount - o.shippingFee), 0);
+  // --- FINANCIAL METRICS (SOURCE: TRANSACTIONS ONLY) ---
+  const finIncome = filteredTransactions.filter(t => t.type === 'INCOME').reduce((sum, t) => sum + t.amount, 0);
+  const finExpense = filteredTransactions.filter(t => t.type === 'EXPENSE').reduce((sum, t) => sum + t.amount, 0);
+  const finProfit = finIncome - finExpense;
 
-  // Expenses (Chi)
-  const totalExpenses = filteredTransactions.filter(t => t.type === 'EXPENSE').reduce((sum, t) => sum + t.amount, 0);
+  // --- OPERATIONAL METRICS (SOURCE: ORDERS ONLY) ---
+  const opTotalOrders = filteredOrders.length;
+  const opReconciledOrders = filteredOrders.filter(o => o.status === OrderStatus.RECONCILIATION);
+  const opReconciledCount = opReconciledOrders.length;
+  // Estimated Net Sales from Orders (For reference only, not Financial Report)
+  const opEstimatedNet = opReconciledOrders.reduce((sum, o) => sum + (o.totalAmount - o.shippingFee), 0);
+  const opShippingOrders = filteredOrders.filter(o => o.status === OrderStatus.SHIPPING || o.status === OrderStatus.PROCESSING).length;
 
-  // Profit
-  const totalProfit = totalRevenue - totalExpenses;
 
-  // Chart Data Preparation (Daily within range)
+  // Chart Data Preparation (Financial Flow)
   const chartData = useMemo(() => {
     const days = [];
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const loopStart = new Date(startDate);
+    const loopEnd = new Date(endDate);
+    
+    for (let d = new Date(loopStart); d <= loopEnd; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         
-        // Revenue for day
-        const dayRev = orders
-            .filter(o => o.status === OrderStatus.RECONCILIATION && o.createdAt.startsWith(dateStr))
-            .reduce((sum, o) => sum + (o.totalAmount - o.shippingFee), 0);
+        // Financial Data Only
+        const dayInc = transactions
+            .filter(t => t.type === 'INCOME' && t.date === dateStr)
+            .reduce((sum, t) => sum + t.amount, 0);
         
-        // Expense for day
         const dayExp = transactions
             .filter(t => t.type === 'EXPENSE' && t.date === dateStr)
             .reduce((sum, t) => sum + t.amount, 0);
 
         days.push({
             name: `${d.getDate()}/${d.getMonth()+1}`,
-            revenue: dayRev,
+            income: dayInc,
             expense: dayExp,
-            profit: dayRev - dayExp
+            profit: dayInc - dayExp
         });
     }
     return days;
-  }, [dateRange, orders, transactions]);
+  }, [dateRange, transactions]);
 
 
-  // --- VIEW COMPONENTS ---
-
-  const StatCard = ({ title, value, subValue, icon: Icon, color, onClick, active }: any) => (
-    <div 
-        onClick={onClick}
-        className={`bg-white p-6 rounded-xl shadow-sm border cursor-pointer transition-all duration-200 hover:shadow-md ${active ? `ring-2 ring-${color.split('-')[1]}-500 border-${color.split('-')[1]}-500` : 'border-gray-100'}`}
-    >
-      <div className="flex justify-between items-start">
-        <div>
-          <p className="text-sm text-gray-500 mb-1">{title}</p>
-          <h3 className={`text-2xl font-bold text-gray-800`}>{value}</h3>
-          {subValue && <p className="text-xs text-gray-400 mt-1">{subValue}</p>}
-        </div>
-        <div className={`p-3 rounded-lg ${color}`}>
-          <Icon className="w-6 h-6 text-white" />
-        </div>
+  // --- COMPONENT HELPERS ---
+  const StatCard = ({ title, value, subValue, icon: Icon, color, textColor, tooltip }: any) => (
+    <div className={`bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative group overflow-hidden`}>
+      <div className={`absolute top-0 right-0 p-4 opacity-10 ${textColor}`}>
+          <Icon className="w-16 h-16" />
       </div>
-      <div className="mt-4 flex items-center text-sm text-blue-600 font-medium">
-         Xem chi tiết <ArrowRight className="w-4 h-4 ml-1" />
+      <div className="relative z-10">
+          <p className="text-sm text-gray-500 mb-1 flex items-center font-medium uppercase tracking-wide">
+             {title}
+             {tooltip && <Info className="w-3 h-3 ml-1 text-gray-400 cursor-help" title={tooltip}/>}
+          </p>
+          <h3 className={`text-3xl font-bold ${textColor} mb-1`}>{value}</h3>
+          {subValue && <p className="text-xs text-gray-400">{subValue}</p>}
       </div>
     </div>
   );
 
-  const DetailTable = ({ title, columns, children, onClose }: any) => (
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 mt-6 animate-fade-in overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-              <h3 className="text-lg font-bold text-gray-800">{title}</h3>
-              <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-                  <X className="w-5 h-5 text-gray-500" />
-              </button>
-          </div>
-          <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
-              <table className="w-full text-left border-collapse">
-                  <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-semibold sticky top-0 z-10">
-                      <tr>
-                          {columns.map((col: string, idx: number) => (
-                              <th key={idx} className="px-6 py-3">{col}</th>
-                          ))}
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                      {children}
-                  </tbody>
-              </table>
-          </div>
-      </div>
-  );
-
   return (
-    <div className="p-6 space-y-6 pb-20">
+    <div className="p-6 space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
            <h1 className="text-2xl font-bold text-gray-800">Tổng quan Báo cáo</h1>
-           <p className="text-sm text-gray-500">Dữ liệu được tổng hợp tự động từ Đơn hàng và Khoản chi</p>
+           <p className="text-sm text-gray-500">Báo cáo được chia thành 2 phần độc lập: Tài chính & Vận hành</p>
         </div>
         
         {/* Date Filter */}
@@ -150,137 +115,54 @@ const Dashboard = () => {
         </div>
       </div>
       
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-          title="Đơn hàng" 
-          value={totalOrdersCount} 
-          subValue={`${reconciledCount} đơn đã đối soát`}
-          icon={Package} 
-          color="bg-blue-500"
-          active={activeView === 'OVERVIEW'} // Just generic
-          onClick={() => setActiveView('OVERVIEW')} 
-        />
-        <StatCard 
-          title="Doanh Thu" 
-          value={`${(totalRevenue / 1000).toLocaleString('vi-VN')}k`} 
-          subValue="Thực nhận từ đơn đối soát"
-          icon={CheckCircle} 
-          color="bg-green-500" 
-          active={activeView === 'REVENUE_DETAILS'}
-          onClick={() => setActiveView('REVENUE_DETAILS')}
-        />
-        <StatCard 
-          title="Tổng Chi" 
-          value={`${(totalExpenses / 1000).toLocaleString('vi-VN')}k`} 
-          subValue="Chi mua hàng & khác"
-          icon={Wallet} 
-          color="bg-red-500" 
-          active={activeView === 'EXPENSE_DETAILS'}
-          onClick={() => setActiveView('EXPENSE_DETAILS')}
-        />
-        <StatCard 
-          title="Lợi Nhuận" 
-          value={`${(totalProfit / 1000).toLocaleString('vi-VN')}k`} 
-          subValue="Doanh thu - Chi phí"
-          icon={TrendingUp} 
-          color="bg-orange-500" 
-          active={activeView === 'PROFIT_DETAILS'}
-          onClick={() => setActiveView('PROFIT_DETAILS')}
-        />
+      {/* --- BLOCK 1: FINANCIAL OVERVIEW (STRICT) --- */}
+      <div className="space-y-4">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center border-l-4 border-blue-500 pl-3">
+              1. TỔNG QUAN TÀI CHÍNH (SỔ QUỸ)
+          </h2>
+          <p className="text-xs text-gray-500 italic pl-4 -mt-3 mb-2">Dữ liệu lấy trực tiếp từ Quản lý Thu - Chi (Không tính từ đơn hàng chưa thu tiền)</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <StatCard 
+                title="Tổng Thu Nhập" 
+                value={`${(finIncome / 1000).toLocaleString('vi-VN')}k`} 
+                subValue="Từ phiếu thu bán hàng & thu khác"
+                icon={DollarSign} 
+                color="bg-green-500"
+                textColor="text-green-600"
+                tooltip="Tổng tiền đã thực thu và ghi vào Sổ Quỹ"
+              />
+              <StatCard 
+                title="Tổng Chi Phí" 
+                value={`${(finExpense / 1000).toLocaleString('vi-VN')}k`} 
+                subValue="Mua vật tư & Chi phí vận hành"
+                icon={Wallet} 
+                color="bg-red-500"
+                textColor="text-red-600"
+                tooltip="Tổng tiền đã chi ra và ghi vào Sổ Quỹ"
+              />
+              <StatCard 
+                title="Lợi Nhuận Ròng" 
+                value={`${(finProfit / 1000).toLocaleString('vi-VN')}k`} 
+                subValue="Tổng Thu - Tổng Chi"
+                icon={TrendingUp} 
+                color="bg-blue-500"
+                textColor={finProfit >= 0 ? 'text-blue-600' : 'text-red-600'}
+                tooltip="Số tiền thực còn lại trong quỹ"
+              />
+          </div>
       </div>
 
-      {/* DRILL DOWN VIEWS */}
-      
-      {activeView === 'REVENUE_DETAILS' && (
-          <DetailTable 
-            title={`Chi tiết Doanh Thu (${reconciledCount} đơn đối soát)`} 
-            columns={['Mã Đơn', 'Khách hàng', 'Ngày tạo', 'COD', 'Phí Ship', 'Thực Nhận']}
-            onClose={() => setActiveView('OVERVIEW')}
-          >
-              {reconciledOrders.map(o => (
-                  <tr key={o.id} className="hover:bg-green-50">
-                      <td className="px-6 py-4 font-medium text-blue-600">{o.orderCode}</td>
-                      <td className="px-6 py-4">{o.customer.name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</td>
-                      <td className="px-6 py-4">{o.totalAmount.toLocaleString('vi-VN')}</td>
-                      <td className="px-6 py-4 text-gray-500">{o.shippingFee.toLocaleString('vi-VN')}</td>
-                      <td className="px-6 py-4 font-bold text-green-700">{(o.totalAmount - o.shippingFee).toLocaleString('vi-VN')}</td>
-                  </tr>
-              ))}
-              {reconciledOrders.length === 0 && (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">Không có đơn hàng nào được đối soát trong khoảng thời gian này.</td></tr>
-              )}
-          </DetailTable>
-      )}
-
-      {activeView === 'EXPENSE_DETAILS' && (
-          <DetailTable 
-            title="Chi tiết Khoản Chi" 
-            columns={['Ngày chi', 'Loại chi', 'Mô tả', 'Số tiền']}
-            onClose={() => setActiveView('OVERVIEW')}
-          >
-              {filteredTransactions.filter(t => t.type === 'EXPENSE').map(t => (
-                  <tr key={t.id} className="hover:bg-red-50">
-                      <td className="px-6 py-4 text-sm text-gray-500">{new Date(t.date).toLocaleDateString('vi-VN')}</td>
-                      <td className="px-6 py-4">
-                          <span className="px-2 py-1 rounded-full bg-gray-100 text-xs font-medium">
-                              {t.category === 'MATERIAL_PURCHASE' ? 'Mua vật tư' : 'Chi khác'}
-                          </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-700">{t.description}</td>
-                      <td className="px-6 py-4 font-bold text-red-600">-{t.amount.toLocaleString('vi-VN')}</td>
-                  </tr>
-              ))}
-              {filteredTransactions.filter(t => t.type === 'EXPENSE').length === 0 && (
-                  <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">Không có khoản chi nào trong khoảng thời gian này.</td></tr>
-              )}
-          </DetailTable>
-      )}
-
-      {activeView === 'PROFIT_DETAILS' && (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 mt-6 animate-fade-in p-8">
-               <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold text-gray-800">Bảng đối chiếu Lợi Nhuận</h3>
-                  <button onClick={() => setActiveView('OVERVIEW')} className="text-gray-400 hover:text-gray-600"><X className="w-6 h-6"/></button>
-               </div>
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                   <div className="p-6 bg-green-50 rounded-xl border border-green-100 text-center">
-                       <p className="text-gray-600 mb-2 font-medium">Tổng Doanh Thu</p>
-                       <h2 className="text-3xl font-bold text-green-600">{totalRevenue.toLocaleString('vi-VN')} đ</h2>
-                       <p className="text-xs text-green-700 mt-2">Từ {reconciledCount} đơn đối soát</p>
-                   </div>
-                   <div className="flex justify-center items-center">
-                       <div className="bg-gray-100 rounded-full p-2">
-                           <span className="text-2xl font-bold text-gray-400">-</span>
-                       </div>
-                   </div>
-                   <div className="p-6 bg-red-50 rounded-xl border border-red-100 text-center">
-                       <p className="text-gray-600 mb-2 font-medium">Tổng Chi Phí</p>
-                       <h2 className="text-3xl font-bold text-red-600">{totalExpenses.toLocaleString('vi-VN')} đ</h2>
-                       <p className="text-xs text-red-700 mt-2">{filteredTransactions.length} phiếu chi</p>
-                   </div>
-               </div>
-               <div className="mt-8 pt-8 border-t border-gray-100 text-center">
-                   <p className="text-gray-500 mb-2 text-lg">Lợi Nhuận Ròng</p>
-                   <h1 className={`text-5xl font-bold ${totalProfit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                       {totalProfit.toLocaleString('vi-VN')} đ
-                   </h1>
-               </div>
-          </div>
-      )}
-
-      {/* CHART SECTION */}
-      {activeView === 'OVERVIEW' && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-800 mb-6">Biểu đồ Lợi nhuận theo ngày</h3>
-          <div className="h-80">
+      {/* --- CHART SECTION --- */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h3 className="text-sm font-bold text-gray-600 mb-6 uppercase">Biểu đồ dòng tiền (Thu / Chi)</h3>
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -290,37 +172,64 @@ const Dashboard = () => {
                   contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                   formatter={(value: number) => [`${value.toLocaleString('vi-VN')} đ`]}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="revenue" 
-                  name="Doanh thu"
-                  stroke="#22c55e" 
-                  strokeWidth={2}
-                  fillOpacity={0} 
-                  fill="url(#colorProfit)" 
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="expense" 
-                  name="Chi phí"
-                  stroke="#ef4444" 
-                  strokeWidth={2}
-                  fillOpacity={0} 
-                />
-                 <Area 
-                  type="monotone" 
-                  dataKey="profit" 
-                  name="Lợi nhuận"
-                  stroke="#f97316" 
-                  strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorProfit)" 
-                />
+                <Area type="monotone" dataKey="income" name="Thu nhập" stroke="#16a34a" strokeWidth={2} fillOpacity={0} />
+                <Area type="monotone" dataKey="expense" name="Chi phí" stroke="#dc2626" strokeWidth={2} fillOpacity={0} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      )}
+      </div>
+
+      {/* --- BLOCK 2: OPERATIONAL STATISTICS (STRICT) --- */}
+      <div className="space-y-4 pt-4 border-t border-dashed border-gray-200">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center border-l-4 border-orange-500 pl-3">
+              2. THỐNG KÊ VẬN HÀNH (ĐƠN HÀNG)
+          </h2>
+          <p className="text-xs text-gray-500 italic pl-4 -mt-3 mb-2">Số liệu thống kê hoạt động bán hàng (Mang tính tham khảo, chưa chắc chắn đã thu tiền)</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center">
+                  <div className="p-3 bg-blue-50 rounded-lg mr-4">
+                      <Package className="w-6 h-6 text-blue-500" />
+                  </div>
+                  <div>
+                      <p className="text-xs text-gray-500 uppercase font-bold">Tổng đơn tạo</p>
+                      <h4 className="text-xl font-bold text-gray-800">{opTotalOrders}</h4>
+                  </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center">
+                  <div className="p-3 bg-orange-50 rounded-lg mr-4">
+                      <ShoppingCart className="w-6 h-6 text-orange-500" />
+                  </div>
+                  <div>
+                      <p className="text-xs text-gray-500 uppercase font-bold">Đang xử lý / Giao</p>
+                      <h4 className="text-xl font-bold text-gray-800">{opShippingOrders}</h4>
+                  </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center">
+                  <div className="p-3 bg-purple-50 rounded-lg mr-4">
+                      <CheckCircle className="w-6 h-6 text-purple-500" />
+                  </div>
+                  <div>
+                      <p className="text-xs text-gray-500 uppercase font-bold">Đã đối soát</p>
+                      <h4 className="text-xl font-bold text-gray-800">{opReconciledCount}</h4>
+                  </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center">
+                  <div className="p-3 bg-gray-100 rounded-lg mr-4">
+                      <DollarSign className="w-6 h-6 text-gray-500" />
+                  </div>
+                  <div>
+                      <p className="text-xs text-gray-500 uppercase font-bold">Giá trị thực nhận (Est)</p>
+                      <h4 className="text-xl font-bold text-gray-600" title="Tổng COD - Ship của các đơn đối soát">
+                          {(opEstimatedNet / 1000).toLocaleString('vi-VN')}k
+                      </h4>
+                  </div>
+              </div>
+          </div>
+      </div>
     </div>
   );
 };
