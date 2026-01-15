@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { InventoryItem } from '../types';
 import { MOCK_INVENTORY } from '../services/mockData';
-import { useAuth } from './AuthContext';
 
 interface InventoryContextType {
   inventory: InventoryItem[];
@@ -12,32 +11,25 @@ interface InventoryContextType {
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'happy_flower_inventory_data';
+
 export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
   const [inventory, setInventoryState] = useState<InventoryItem[]>([]);
 
-  // Load data for specific user
+  // Load data on mount
   useEffect(() => {
-    if (user) {
-      const storageKey = `happy_flower_inventory_${user.id}`;
-      const storedData = localStorage.getItem(storageKey);
-      if (storedData) {
-        setInventoryState(JSON.parse(storedData));
-      } else {
-        setInventoryState(MOCK_INVENTORY);
-        localStorage.setItem(storageKey, JSON.stringify(MOCK_INVENTORY));
-      }
+    const storedData = localStorage.getItem(STORAGE_KEY);
+    if (storedData) {
+      setInventoryState(JSON.parse(storedData));
     } else {
-      setInventoryState([]);
+      setInventoryState(MOCK_INVENTORY);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(MOCK_INVENTORY));
     }
-  }, [user]);
+  }, []);
 
   const saveInventory = (newInventory: InventoryItem[]) => {
     setInventoryState(newInventory);
-    if (user) {
-        const storageKey = `happy_flower_inventory_${user.id}`;
-        localStorage.setItem(storageKey, JSON.stringify(newInventory));
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newInventory));
   };
 
   const addItem = (newItem: Omit<InventoryItem, 'id' | 'updatedAt'>) => {

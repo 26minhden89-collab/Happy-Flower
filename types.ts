@@ -9,15 +9,6 @@ export enum OrderStatus {
   RETURNED = 'Trả hàng'
 }
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  password?: string;
-  role: 'admin' | 'staff';
-  avatar?: string;
-}
-
 export interface Customer {
   id: string;
   name: string;
@@ -72,17 +63,34 @@ export interface Order {
   usedMaterials?: UsedMaterial[]; // Vật tư sử dụng cho đơn hàng này
   status: OrderStatus;
   createdAt: string;
-  totalAmount: number; // COD Amount (Product + Ship)
-  shippingFee: number; // Shipping cost
+  totalAmount: number; // Đây là tổng tiền COD (Tiền hàng + tiền khách trả ship nếu có)
+  shippingFee: number; // Phí ship shop phải trả cho bên vận chuyển
   paymentMethod: 'COD' | 'Bank Transfer' | 'Momo';
   notes?: string;
   deliveryUnit?: string;
   deliveryCode?: string;
 }
 
-export interface DashboardStats {
-  totalOrders: number;
-  revenue: number;
-  pendingCount: number;
-  shippingCount: number;
+// --- FINANCE TYPES (EXPENSE ONLY) ---
+
+export type TransactionType = 'EXPENSE'; // Income is calculated from Orders
+export type TransactionCategory = 'MATERIAL_PURCHASE' | 'OTHER';
+
+export interface Transaction {
+  id: string;
+  date: string;
+  amount: number;
+  type: TransactionType;
+  category: TransactionCategory;
+  description: string;
+  relatedMaterials?: UsedMaterial[]; // Liên kết vật tư (nếu là chi mua vật tư)
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  role: string;
+  avatar?: string;
 }

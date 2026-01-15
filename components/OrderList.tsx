@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { useOrder } from '../contexts/OrderContext';
 import { useInventory } from '../contexts/InventoryContext';
 import { useProduct } from '../contexts/ProductContext';
+// useFinance removed because we no longer add transactions from here
 
 const OrderList = () => {
   // Global State từ Context
@@ -282,100 +283,6 @@ const OrderList = () => {
     }
   };
 
-  // --- LOGIC QUẢN LÝ PRODUCT MANAGER MODAL ---
-  const openProductManager = () => {
-    setEditingProduct(null); // Mode: Create
-    setProductForm({ name: '', price: '', image: '', recipe: [] });
-    setRecipeInvId('');
-    setRecipeQty('');
-    setIsProductManagerOpen(true);
-  };
-
-  const selectProductToEdit = (product: Product) => {
-    setEditingProduct(product);
-    setProductForm({
-      name: product.name,
-      price: product.price.toString(),
-      image: product.image || '',
-      recipe: product.recipe || []
-    });
-    setRecipeInvId('');
-    setRecipeQty('');
-  };
-
-  const handleAddRecipeItem = () => {
-    if (!recipeInvId || !recipeQty) return;
-    const qty = parseInt(recipeQty);
-    if (qty <= 0) return;
-
-    // Check if exists
-    const exists = productForm.recipe.find(r => r.inventoryId === recipeInvId);
-    if (exists) {
-        setProductForm(prev => ({
-            ...prev,
-            recipe: prev.recipe.map(r => r.inventoryId === recipeInvId ? { ...r, quantity: r.quantity + qty } : r)
-        }));
-    } else {
-        setProductForm(prev => ({
-            ...prev,
-            recipe: [...prev.recipe, { inventoryId: recipeInvId, quantity: qty }]
-        }));
-    }
-    setRecipeInvId('');
-    setRecipeQty('');
-  };
-
-  const handleRemoveRecipeItem = (invId: string) => {
-    setProductForm(prev => ({
-        ...prev,
-        recipe: prev.recipe.filter(r => r.inventoryId !== invId)
-    }));
-  };
-
-  const handleSaveProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!productForm.name || !productForm.price) return;
-
-    const price = parseInt(productForm.price) || 0;
-
-    if (editingProduct) {
-        updateProduct(editingProduct.id, {
-            name: productForm.name,
-            price: price,
-            image: productForm.image,
-            recipe: productForm.recipe
-        });
-    } else {
-        addProduct({
-            name: productForm.name,
-            price: price,
-            image: productForm.image || `https://picsum.photos/100/100?random=${Math.floor(Math.random() * 1000)}`,
-            recipe: productForm.recipe
-        });
-    }
-    
-    // Reset form to add mode after save
-    setEditingProduct(null);
-    setProductForm({ name: '', price: '', image: '', recipe: [] });
-  };
-
-  const handleDeleteProduct = (id: string) => {
-      setProductToDelete(id);
-  };
-  
-  const confirmDeleteProduct = () => {
-      if (productToDelete) {
-          deleteProduct(productToDelete);
-          // Nếu đang edit sản phẩm bị xóa thì reset form
-          if (editingProduct?.id === productToDelete) {
-              setEditingProduct(null);
-              setProductForm({ name: '', price: '', image: '', recipe: [] });
-          }
-          setProductToDelete(null);
-      }
-  };
-
-
   // --- LOGIC VẬT TƯ ---
   const handleAddMaterial = () => {
     if (!tempMaterialId || !tempMaterialQty) return;
@@ -528,8 +435,10 @@ const OrderList = () => {
 
   const formProductTotal = calculateTotalProductPrice();
   const formShippingFee = parseInt(orderForm.shippingFee) || 0;
-  const formTotalAmount = formProductTotal - formShippingFee; // Tiền đơn hàng (COD)
-  const formNetReceived = formTotalAmount; // Thực nhận (Giả sử bằng COD)
+  
+  // NEW LOGIC: TotalAmount in DB = COD Amount.
+  // COD = Product Total + Shipping Fee.
+  const formTotalAmount = formProductTotal + formShippingFee; 
 
   // Xử lý Lưu (Tạo mới hoặc Cập nhật)
   const handleSaveOrder = (e: React.FormEvent) => {
@@ -541,19 +450,9 @@ const OrderList = () => {
         return;
     }
 
-    // Logic tạo mã tự động nếu để trống
     const finalOrderCode = orderForm.orderCode || 'DH' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
     const finalTrackingNumber = orderForm.trackingNumber || 'HFL' + Math.floor(10000000 + Math.random() * 90000000).toString();
-    
-    // Logic tạo mã giao hàng nếu chưa có
-    let finalDeliveryCode = orderForm.deliveryCode;
-    if (!finalDeliveryCode && orderForm.deliveryUnit) {
-        const deliveryCodePrefix = 
-          orderForm.deliveryUnit === 'Giao Hàng Nhanh' ? 'GHN' :
-          orderForm.deliveryUnit === 'Giao Hàng Tiết Kiệm' ? 'GHTK' :
-          orderForm.deliveryUnit === 'Viettel Post' ? 'VTP' : 'AHA';
-        finalDeliveryCode = deliveryCodePrefix + Math.floor(Math.random() * 1000000).toString();
-    }
+    const finalDeliveryCode = orderForm.deliveryCode;
 
     // Convert Form Items to Order Items
     const finalItems: OrderItem[] = orderForm.items.map(i => ({
@@ -565,8 +464,12 @@ const OrderList = () => {
     }));
     
     // --- TRỪ KHO (INVENTORY DEDUCTION) ---
-    // Note: Để đơn giản cho demo, chúng ta sẽ trừ kho mỗi khi nhấn Lưu.
-    if (orderForm.usedMaterials.length > 0) {
+    // Prompt: "Khi đơn hàng có mã giao hàng: Tự động trừ vật tư theo số lượng đã khai báo"
+    // Note: Ở bản demo này, trừ kho xảy ra mỗi khi nhấn Lưu nếu có mã vận đơn. 
+    // Trong thực tế cần check xem đã trừ chưa.
+    const shouldDeductInventory = finalDeliveryCode && orderForm.usedMaterials.length > 0;
+    
+    if (shouldDeductInventory) {
         orderForm.usedMaterials.forEach(mat => {
             const currentItem = inventory.find(i => i.id === mat.inventoryId);
             if (currentItem) {
@@ -575,6 +478,13 @@ const OrderList = () => {
             }
         });
     }
+
+    // --- LOGIC DOANH THU ---
+    // KHÔNG TẠO PHIẾU THU THỦ CÔNG.
+    // Doanh thu sẽ được tính toán ĐỘNG dựa trên trạng thái 'RECONCILIATION' ở Dashboard/Finance.
+    // Nên ở đây KHÔNG CẦN gọi addTransaction.
+
+    const orderId = editingOrderId || Math.random().toString(36).substr(2, 9);
 
     if (editingOrderId) {
       // --- CẬP NHẬT ĐƠN HÀNG CŨ ---
@@ -606,7 +516,7 @@ const OrderList = () => {
     } else {
       // --- TẠO ĐƠN HÀNG MỚI ---
       const newOrder: Order = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: orderId,
         orderCode: finalOrderCode,
         trackingNumber: finalTrackingNumber,
         customer: {
@@ -634,16 +544,12 @@ const OrderList = () => {
     resetForm();
   };
 
-  // Xử lý yêu cầu xóa (Mở Modal)
-  const onRequestDelete = (orderId: string) => {
-    setOrderToDelete(orderId);
-    setActiveMenuId(null);
+  const onRequestDelete = (id: string) => {
+    setOrderToDelete(id);
   };
 
-  // Xác nhận xóa thật (Xử lý logic)
   const confirmDeleteOrder = () => {
     if (orderToDelete) {
-      // Sử dụng hàm deleteOrder từ Context
       deleteOrder(orderToDelete);
       setOrderToDelete(null);
     }
@@ -659,7 +565,7 @@ const OrderList = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Quản lý đơn hàng</h1>
-          <p className="text-sm text-gray-500 mt-1">Quản lý và theo dõi trạng thái giao hàng</p>
+          <p className="text-sm text-gray-500 mt-1">Trung tâm doanh thu - Chỉ ghi nhận từ Đơn đối soát</p>
         </div>
         <div className="flex flex-wrap gap-2 sm:gap-3">
           
@@ -736,100 +642,104 @@ const OrderList = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50 text-gray-500 text-xs uppercase font-semibold tracking-wider">
-                <th className="px-6 py-4">Mã Giao Hàng (Đối tác)</th>
+                <th className="px-6 py-4">Mã Giao Hàng</th>
                 <th className="px-6 py-4">Khách hàng</th>
                 <th className="px-6 py-4">Sản phẩm</th>
-                <th className="px-6 py-4">Tiền Đơn Hàng</th>
-                <th className="px-6 py-4">Phí ship</th>
                 <th className="px-6 py-4">Tổng tiền COD</th>
+                <th className="px-6 py-4">Phí ship</th>
+                <th className="px-6 py-4">Thực nhận (COD - Ship)</th>
                 <th className="px-6 py-4">Trạng thái</th>
                 <th className="px-6 py-4 text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className={`font-bold ${order.deliveryCode ? 'text-orange-600' : 'text-gray-400 font-normal italic'}`}>
-                        {order.deliveryCode || '---'}
-                    </span>
-                    <div className="text-xs text-gray-500 mt-1 flex items-center">
-                        <span className="font-medium text-gray-600 mr-1">#{order.orderCode}</span>
-                        <span className="text-gray-300 mx-1">|</span>
-                        {new Date(order.createdAt).toLocaleDateString('vi-VN')}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">{order.customer.name}</div>
-                    <div className="text-xs text-gray-500">{order.customer.phone}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-600 max-w-xs truncate" title={order.items.map(i => `${i.quantity}x ${i.productName}`).join(', ')}>
-                      {order.items.map(i => `${i.quantity}x ${i.productName}`).join(', ')}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-bold text-gray-800">
-                      {order.totalAmount.toLocaleString('vi-VN')} đ
-                    </div>
-                    <div className="text-xs text-gray-500">{order.paymentMethod}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-600">
-                      {order.shippingFee.toLocaleString('vi-VN')} đ
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-bold text-green-600">
-                      {/* Thực nhận = Tiền hàng - Ship. Vì COD = Tiền hàng - Ship nên Thực nhận = COD */}
-                      {order.totalAmount.toLocaleString('vi-VN')} đ
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(order.status)}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center relative action-menu-container">
-                    <div className="flex items-center justify-center space-x-2">
-                      <button 
-                        onClick={() => openEditModal(order)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Chỉnh sửa đơn hàng"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(activeMenuId === order.id ? null : order.id);
-                        }}
-                        className={`p-2 rounded-lg transition-colors ${activeMenuId === order.id ? 'bg-gray-200 text-gray-800' : 'text-gray-400 hover:bg-gray-100'}`}
-                      >
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
-                    </div>
+              {filteredOrders.map((order) => {
+                  const netReceived = order.totalAmount - order.shippingFee;
+                  const isReconciled = order.status === OrderStatus.RECONCILIATION;
+                  return (
+                    <tr key={order.id} className={`hover:bg-gray-50 transition-colors ${isReconciled ? 'bg-green-50/50' : ''}`}>
+                      <td className="px-6 py-4">
+                        <span className={`font-bold ${order.deliveryCode ? 'text-orange-600' : 'text-gray-400 font-normal italic'}`}>
+                            {order.deliveryCode || '---'}
+                        </span>
+                        <div className="text-xs text-gray-500 mt-1 flex items-center">
+                            <span className="font-medium text-gray-600 mr-1">#{order.orderCode}</span>
+                            <span className="text-gray-300 mx-1">|</span>
+                            {new Date(order.createdAt).toLocaleDateString('vi-VN')}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{order.customer.name}</div>
+                        <div className="text-xs text-gray-500">{order.customer.phone}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-600 max-w-xs truncate" title={order.items.map(i => `${i.quantity}x ${i.productName}`).join(', ')}>
+                          {order.items.map(i => `${i.quantity}x ${i.productName}`).join(', ')}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-bold text-gray-800">
+                          {order.totalAmount.toLocaleString('vi-VN')} đ
+                        </div>
+                        <div className="text-xs text-gray-500">{order.paymentMethod}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-600">
+                          {order.shippingFee.toLocaleString('vi-VN')} đ
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`text-sm font-bold ${isReconciled ? 'text-green-700' : 'text-gray-400'}`}>
+                          {netReceived.toLocaleString('vi-VN')} đ
+                          {isReconciled && <CheckCircle className="w-3 h-3 inline-block ml-1" />}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(order.status)}`}>
+                          {order.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center relative action-menu-container">
+                        <div className="flex items-center justify-center space-x-2">
+                          <button 
+                            onClick={() => openEditModal(order)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Chỉnh sửa đơn hàng"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuId(activeMenuId === order.id ? null : order.id);
+                            }}
+                            className={`p-2 rounded-lg transition-colors ${activeMenuId === order.id ? 'bg-gray-200 text-gray-800' : 'text-gray-400 hover:bg-gray-100'}`}
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        </div>
 
-                    {/* Dropdown Menu */}
-                    {activeMenuId === order.id && (
-                      <div className="absolute right-6 top-10 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 overflow-hidden animate-fade-in text-left">
-                         <button 
-                           onClick={() => openEditModal(order)}
-                           className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                         >
-                           <Edit className="w-4 h-4 mr-2" /> Chỉnh sửa đơn hàng
-                         </button>
-                         <button 
-                             onClick={() => onRequestDelete(order.id)}
-                             className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center border-t border-gray-50"
-                           >
-                             <Trash2 className="w-4 h-4 mr-2" /> Xóa đơn hàng
-                         </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                        {/* Dropdown Menu */}
+                        {activeMenuId === order.id && (
+                          <div className="absolute right-6 top-10 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 overflow-hidden animate-fade-in text-left">
+                             <button 
+                               onClick={() => openEditModal(order)}
+                               className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                             >
+                               <Edit className="w-4 h-4 mr-2" /> Chỉnh sửa đơn hàng
+                             </button>
+                             <button 
+                                 onClick={() => onRequestDelete(order.id)}
+                                 className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center border-t border-gray-50"
+                               >
+                                 <Trash2 className="w-4 h-4 mr-2" /> Xóa đơn hàng
+                             </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+              })}
               
               {filteredOrders.length === 0 && (
                 <tr>
@@ -852,19 +762,13 @@ const OrderList = () => {
         
         <div className="p-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
            <span className="text-xs text-gray-500">Hiển thị {filteredOrders.length} đơn hàng</span>
-           <div className="flex space-x-1">
-             <button className="px-3 py-1 border border-gray-300 rounded text-xs text-gray-600 bg-white opacity-50 cursor-not-allowed">Trước</button>
-             <button className="px-3 py-1 border border-gray-300 rounded text-xs text-white bg-orange-500">1</button>
-             <button className="px-3 py-1 border border-gray-300 rounded text-xs text-gray-600 bg-white hover:bg-gray-50">2</button>
-             <button className="px-3 py-1 border border-gray-300 rounded text-xs text-gray-600 bg-white hover:bg-gray-50">Sau</button>
-           </div>
         </div>
       </div>
-
+      
       {/* Delete Order Confirmation Modal */}
       {orderToDelete && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl overflow-hidden transform transition-all scale-100 border border-gray-100">
+          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-100">
             <div className="p-6 text-center">
               <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-red-50">
                 <Trash2 className="w-7 h-7 text-red-600" />
@@ -882,7 +786,7 @@ const OrderList = () => {
                 </button>
                 <button 
                   onClick={confirmDeleteOrder}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 shadow-lg shadow-red-200 transition-all focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 shadow-lg shadow-red-200 transition-all focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   Xóa ngay
                 </button>
@@ -892,320 +796,72 @@ const OrderList = () => {
         </div>
       )}
 
-      {/* Product Delete Confirmation Modal */}
-      {productToDelete && (
-        <div className="fixed inset-0 bg-black/50 z-[80] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl overflow-hidden transform transition-all scale-100 border border-gray-100">
-            <div className="p-6 text-center">
-              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-red-50">
-                <Trash2 className="w-7 h-7 text-red-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Xóa mẫu sản phẩm?</h3>
-              <p className="text-sm text-gray-500 mb-6">
-                Bạn có chắc chắn muốn xóa mẫu này không? <br/>Hành động này không thể hoàn tác.
-              </p>
-              <div className="flex space-x-3">
-                <button 
-                  onClick={() => setProductToDelete(null)}
-                  className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                >
-                  Hủy bỏ
-                </button>
-                <button 
-                  onClick={confirmDeleteProduct}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 shadow-lg shadow-red-200 transition-all"
-                >
-                  Xóa ngay
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* IMPORT EXCEL MODAL */}
+      {/* Import Excel Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
-               <div>
-                  <h2 className="text-lg font-bold text-gray-800 flex items-center">
-                    <FileSpreadsheet className="w-5 h-5 mr-2 text-green-600" />
-                    Nhập đơn hàng loạt
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">Tải lên file Excel để tạo nhanh nhiều đơn hàng.</p>
-               </div>
-              <button onClick={() => {setIsImportModalOpen(false); setImportedData([])}} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-                 <div className="flex flex-col md:flex-row gap-6 mb-8">
-                     <div className="flex-1 bg-blue-50 p-5 rounded-xl border border-blue-100">
-                        <div className="flex items-center mb-3">
-                            <div className="p-2 bg-blue-100 rounded-lg mr-3">
-                                <Download className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <h3 className="font-bold text-gray-800">Bước 1: Tải file mẫu</h3>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-4">
-                            Sử dụng file mẫu chuẩn để đảm bảo dữ liệu được nhập chính xác. Không thay đổi tên cột.
-                        </p>
-                        <button onClick={handleDownloadTemplate} className="px-4 py-2 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors shadow-sm">
-                            Tải xuống Template (.xlsx)
-                        </button>
-                     </div>
-                     <div className="flex-1 bg-gray-50 p-5 rounded-xl border border-gray-200">
-                         <div className="flex items-center mb-3">
-                            <div className="p-2 bg-gray-200 rounded-lg mr-3">
-                                <Upload className="w-5 h-5 text-gray-700" />
-                            </div>
-                            <h3 className="font-bold text-gray-800">Bước 2: Tải lên file</h3>
-                        </div>
-                        <div className="relative">
-                             <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleFileUpload} className="hidden" id="file-upload" />
-                            <label htmlFor="file-upload" className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-white hover:border-gray-400 transition-all">
-                                <span className="text-sm text-gray-500 font-medium mt-1">{importedData.length > 0 ? `Đã tải ${importedData.length} dòng dữ liệu` : 'Click để chọn file Excel'}</span>
-                                <span className="text-xs text-gray-400 mt-1">Hỗ trợ .xlsx, .xls</span>
-                            </label>
-                        </div>
-                     </div>
-                 </div>
-                  {importedData.length > 0 && (
-                     <div className="animate-fade-in">
-                        <h3 className="font-bold text-gray-800 mb-3 flex items-center"><CheckCircle className="w-4 h-4 mr-2 text-green-500" />Xem trước dữ liệu ({importedData.length} đơn hàng)</h3>
-                        <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                             <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-50 text-gray-500 font-medium">
-                                    <tr>
-                                        <th className="px-4 py-3">Khách hàng</th>
-                                        <th className="px-4 py-3">SĐT</th>
-                                        <th className="px-4 py-3">Sản phẩm</th>
-                                        <th className="px-4 py-3 text-right">Đơn giá</th>
-                                        <th className="px-4 py-3 text-center">SL</th>
-                                        <th className="px-4 py-3 text-right">Phí Ship</th>
-                                        <th className="px-4 py-3 text-right">COD (Dự tính)</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {importedData.slice(0, 5).map((row, index) => {
-                                        const price = parseInt(row["Đơn giá"]) || 0;
-                                        const qty = parseInt(row["Số lượng"]) || 0;
-                                        const ship = parseInt(row["Phí Ship"]) || 0;
-                                        const cod = (price * qty) - ship;
-                                        return (
-                                            <tr key={index}>
-                                                <td className="px-4 py-2">{row["Tên khách hàng"]}</td>
-                                                <td className="px-4 py-2">{row["Số điện thoại"]}</td>
-                                                <td className="px-4 py-2 truncate max-w-[150px]">{row["Tên sản phẩm"]}</td>
-                                                <td className="px-4 py-2 text-right">{price.toLocaleString()}</td>
-                                                <td className="px-4 py-2 text-center">{qty}</td>
-                                                <td className="px-4 py-2 text-right">{ship.toLocaleString()}</td>
-                                                <td className="px-4 py-2 text-right font-medium text-green-600">{cod.toLocaleString()}</td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                             </table>
-                        </div>
-                     </div>
-                  )}
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
+             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 className="text-lg font-bold text-gray-800">Nhập đơn hàng từ Excel</h3>
+                <button onClick={() => setIsImportModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
              </div>
-             <div className="p-6 border-t border-gray-100 bg-gray-50 shrink-0 flex justify-end space-x-3">
-                 <button onClick={() => {setIsImportModalOpen(false); setImportedData([])}} className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-100 transition-colors">Hủy bỏ</button>
-                 <button disabled={importedData.length === 0} onClick={handleConfirmImport} className={`px-5 py-2.5 text-white rounded-lg font-medium shadow-md flex items-center ${importedData.length === 0 ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 shadow-green-200'}`}><Save className="w-4 h-4 mr-2" />Xác nhận nhập {importedData.length > 0 ? importedData.length : ''} đơn</button>
-             </div>
-          </div>
-        </div>
-      )}
+             
+             <div className="p-6 space-y-4">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                   <h4 className="font-bold text-blue-800 text-sm mb-1">Hướng dẫn:</h4>
+                   <ul className="list-disc list-inside text-xs text-blue-700 space-y-1">
+                      <li>Tải file mẫu để xem định dạng cột.</li>
+                      <li>Các cột bắt buộc: Tên khách hàng, Số điện thoại, Tên sản phẩm, Đơn giá, Số lượng.</li>
+                   </ul>
+                   <button 
+                      onClick={handleDownloadTemplate}
+                      className="mt-3 text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center"
+                   >
+                      <Download className="w-3 h-3 mr-1" /> Tải file mẫu .xlsx
+                   </button>
+                </div>
 
-      {/* PRODUCT MANAGER MODAL (QUẢN LÝ SẢN PHẨM MẪU) */}
-      {isProductManagerOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col md:flex-row h-[80vh]">
-            {/* Sidebar List (Left) */}
-            <div className="w-full md:w-1/3 border-r border-gray-200 flex flex-col bg-gray-50">
-                <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
-                    <h3 className="font-bold text-gray-800">Danh sách mẫu</h3>
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                   <Upload className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                   <p className="text-sm text-gray-600 font-medium">Click để tải lên file Excel</p>
+                   <p className="text-xs text-gray-400 mt-1">Hỗ trợ .xlsx, .xls</p>
+                   <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleFileUpload} 
+                      className="hidden" 
+                      accept=".xlsx, .xls"
+                   />
+                </div>
+
+                {importedData.length > 0 && (
+                   <div className="bg-green-50 p-3 rounded-lg border border-green-100 flex items-center text-sm text-green-700">
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Đã đọc thành công {importedData.length} dòng dữ liệu.
+                   </div>
+                )}
+
+                <div className="pt-2 flex justify-end gap-3">
                     <button 
-                        onClick={openProductManager}
-                        className="p-2 bg-orange-100 text-orange-600 rounded-lg hover:bg-orange-200 transition-colors"
-                        title="Thêm mẫu mới"
+                      onClick={() => setIsImportModalOpen(false)}
+                      className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                     >
-                        <Plus className="w-4 h-4" />
+                      Hủy bỏ
+                    </button>
+                    <button 
+                      onClick={handleConfirmImport}
+                      disabled={importedData.length === 0}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Xác nhận nhập
                     </button>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-                    {products.map(product => (
-                        <div 
-                            key={product.id} 
-                            onClick={() => selectProductToEdit(product)}
-                            className={`p-3 rounded-lg cursor-pointer border transition-all ${editingProduct?.id === product.id ? 'bg-white border-orange-500 shadow-md' : 'bg-white border-gray-200 hover:border-orange-300'}`}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h4 className="font-medium text-gray-800 text-sm">{product.name}</h4>
-                                    <p className="text-xs text-orange-600 font-bold mt-1">{product.price.toLocaleString('vi-VN')} đ</p>
-                                </div>
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteProduct(product.id);
-                                    }}
-                                    className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            </div>
-                            <div className="mt-2 text-xs text-gray-500">
-                                {product.recipe.length} loại vật tư
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Editor Form (Right) */}
-            <div className="flex-1 flex flex-col bg-white">
-                <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                    <h3 className="font-bold text-lg text-gray-800">
-                        {editingProduct ? 'Chỉnh sửa sản phẩm' : 'Thêm sản phẩm mới'}
-                    </h3>
-                    <button onClick={() => setIsProductManagerOpen(false)} className="text-gray-400 hover:text-gray-600">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Tên sản phẩm mẫu</label>
-                            <input 
-                                type="text"
-                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                placeholder="VD: Bó hoa hồng đỏ 20 bông"
-                                value={productForm.name}
-                                onChange={e => setProductForm({...productForm, name: e.target.value})}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Đơn giá bán (VNĐ)</label>
-                            <input 
-                                type="number"
-                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                placeholder="0"
-                                value={productForm.price}
-                                onChange={e => setProductForm({...productForm, price: e.target.value})}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Link ảnh (Tùy chọn)</label>
-                            <input 
-                                type="text"
-                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                placeholder="https://..."
-                                value={productForm.image}
-                                onChange={e => setProductForm({...productForm, image: e.target.value})}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Recipe Section */}
-                    <div className="bg-orange-50 rounded-xl border border-orange-100 p-5">
-                        <h4 className="font-bold text-gray-800 mb-3 flex items-center">
-                            <Boxes className="w-4 h-4 mr-2 text-orange-600" />
-                            Định mức vật tư (Công thức)
-                        </h4>
-                        <p className="text-xs text-gray-500 mb-4">Khi chọn sản phẩm này trong đơn hàng, các vật tư sau sẽ tự động được thêm vào danh sách trừ kho.</p>
-
-                        <div className="flex gap-2 mb-3">
-                            <select 
-                                className="flex-1 px-3 py-2 border border-orange-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                value={recipeInvId}
-                                onChange={e => setRecipeInvId(e.target.value)}
-                            >
-                                <option value="">-- Chọn vật tư --</option>
-                                {inventory.map(inv => (
-                                    <option key={inv.id} value={inv.id}>{inv.name} ({inv.unit})</option>
-                                ))}
-                            </select>
-                            <input 
-                                type="number"
-                                className="w-24 px-3 py-2 border border-orange-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                placeholder="SL"
-                                value={recipeQty}
-                                onChange={e => setRecipeQty(e.target.value)}
-                            />
-                            <button 
-                                onClick={handleAddRecipeItem}
-                                className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold hover:bg-orange-600 whitespace-nowrap"
-                            >
-                                Thêm
-                            </button>
-                        </div>
-
-                        {productForm.recipe.length > 0 ? (
-                            <div className="bg-white rounded-lg border border-orange-200 overflow-hidden">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-orange-100 text-orange-800 text-xs uppercase font-semibold">
-                                        <tr>
-                                            <th className="px-4 py-2 text-left">Tên vật tư</th>
-                                            <th className="px-4 py-2 text-center">Số lượng</th>
-                                            <th className="px-4 py-2 text-center">ĐVT</th>
-                                            <th className="px-4 py-2 text-center w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-orange-100">
-                                        {productForm.recipe.map((item, idx) => {
-                                            const invItem = inventory.find(i => i.id === item.inventoryId);
-                                            return (
-                                                <tr key={idx}>
-                                                    <td className="px-4 py-2">{invItem?.name || 'Unknown'}</td>
-                                                    <td className="px-4 py-2 text-center font-bold">{item.quantity}</td>
-                                                    <td className="px-4 py-2 text-center text-gray-500">{invItem?.unit}</td>
-                                                    <td className="px-4 py-2 text-center">
-                                                        <button 
-                                                            onClick={() => handleRemoveRecipeItem(item.inventoryId)}
-                                                            className="text-gray-400 hover:text-red-500"
-                                                        >
-                                                            <X className="w-4 h-4" />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div className="text-center py-4 text-gray-400 text-sm border border-dashed border-gray-300 rounded-lg bg-white">
-                                Chưa có định mức vật tư nào.
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                     <button 
-                        onClick={() => setIsProductManagerOpen(false)}
-                        className="px-5 py-2 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-100 transition-colors"
-                     >
-                        Đóng
-                     </button>
-                     <button 
-                        onClick={handleSaveProduct}
-                        className="px-5 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-md flex items-center"
-                     >
-                        <Save className="w-4 h-4 mr-2" />
-                        {editingProduct ? 'Cập nhật mẫu' : 'Lưu mẫu mới'}
-                     </button>
-                </div>
-            </div>
+             </div>
           </div>
         </div>
       )}
-
+      
       {/* Full Screen Create/Edit Order Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col animate-fade-in">
@@ -1245,7 +901,7 @@ const OrderList = () => {
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
             <form onSubmit={handleSaveOrder} className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
+                {/* ... (Keep Customer Info and Product Info same as before) ... */}
                 {/* LEFT COLUMN: Main Info */}
                 <div className="lg:col-span-2 space-y-6">
                     {/* Customer Info */}
@@ -1320,14 +976,6 @@ const OrderList = () => {
                                             </option>
                                         ))}
                                     </select>
-                                    <button 
-                                        type="button"
-                                        onClick={openProductManager}
-                                        className="px-3 py-2 bg-white border border-orange-200 text-orange-600 rounded hover:bg-orange-100 transition-colors flex items-center whitespace-nowrap"
-                                        title="Quản lý danh sách mẫu"
-                                    >
-                                        <Settings className="w-4 h-4 mr-1" /> Quản lý mẫu
-                                    </button>
                                 </div>
                              </div>
                         </div>
@@ -1419,7 +1067,7 @@ const OrderList = () => {
                              <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center justify-between">
                                 <span className="flex items-center">
                                     <Boxes className="w-4 h-4 mr-2 text-gray-500" />
-                                    Vật tư sử dụng (Trừ kho)
+                                    Vật tư sử dụng (Trừ kho khi có mã vận đơn)
                                 </span>
                              </h4>
                              
@@ -1496,7 +1144,7 @@ const OrderList = () => {
                                          </tbody>
                                      </table>
                                      <div className="px-4 py-2 text-xs text-orange-600 bg-orange-50 italic border-t border-orange-100">
-                                        * Lưu ý: Số lượng sẽ được trừ khỏi kho khi bạn nhấn nút "Lưu đơn" hoặc "Cập nhật".
+                                        * Vật tư sẽ tự động trừ kho khi đơn hàng có Mã Giao Hàng.
                                      </div>
                                  </div>
                              )}
@@ -1536,6 +1184,12 @@ const OrderList = () => {
                                     <option key={status} value={status}>{status}</option>
                                 ))}
                             </select>
+                            {orderForm.status === OrderStatus.RECONCILIATION && (
+                                <p className="text-xs text-green-600 mt-2 flex items-center font-bold">
+                                    <DollarSign className="w-3 h-3 mr-1" />
+                                    Doanh thu sẽ được ghi nhận.
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -1597,26 +1251,27 @@ const OrderList = () => {
                             
                             <div className="flex justify-between items-center text-sm text-gray-600">
                                 <span className="flex items-center">
-                                    Phí ship
-                                    <div className="ml-2 w-20">
-                                        <input 
-                                            type="number" 
-                                            className="w-full px-2 py-1 text-right text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                            value={orderForm.shippingFee}
-                                            onChange={(e) => setOrderForm({...orderForm, shippingFee: e.target.value})}
-                                        />
-                                    </div>
+                                    Phí ship (Shop chịu)
                                 </span>
-                                <span>- {formShippingFee.toLocaleString('vi-VN')} đ</span>
+                                <div className="ml-2 w-24">
+                                    <input 
+                                        type="number" 
+                                        className="w-full px-2 py-1 text-right text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                        value={orderForm.shippingFee}
+                                        onChange={(e) => setOrderForm({...orderForm, shippingFee: e.target.value})}
+                                    />
+                                </div>
                             </div>
                             <div className="border-t border-orange-200 my-2"></div>
+                            
                             <div className="flex justify-between items-center">
-                                <span className="text-sm font-bold text-gray-800">Tiền Đơn Hàng</span>
+                                <span className="text-sm font-bold text-gray-800">Tổng tiền COD (Thu khách)</span>
                                 <span className="text-lg font-bold text-orange-600">{formTotalAmount.toLocaleString('vi-VN')} đ</span>
                             </div>
+                            
                             <div className="bg-white p-3 rounded-lg border border-orange-200 flex justify-between items-center mt-2">
-                                <span className="text-sm font-bold text-green-700">Tổng tiền COD</span>
-                                <span className="text-xl font-bold text-green-700">{formNetReceived.toLocaleString('vi-VN')} đ</span>
+                                <span className="text-sm font-bold text-green-700">Thực nhận (COD - Ship)</span>
+                                <span className="text-xl font-bold text-green-700">{(formTotalAmount - formShippingFee).toLocaleString('vi-VN')} đ</span>
                             </div>
                         </div>
                     </div>

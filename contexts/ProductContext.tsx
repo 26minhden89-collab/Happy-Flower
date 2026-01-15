@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Product } from '../types';
 import { MOCK_PRODUCTS } from '../services/mockData';
-import { useAuth } from './AuthContext';
 
 interface ProductContextType {
   products: Product[];
@@ -12,32 +11,25 @@ interface ProductContextType {
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'happy_flower_products_data';
+
 export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
   const [products, setProductsState] = useState<Product[]>([]);
 
-  // Load data for specific user
+  // Load data on mount
   useEffect(() => {
-    if (user) {
-      const storageKey = `happy_flower_products_${user.id}`;
-      const storedData = localStorage.getItem(storageKey);
-      if (storedData) {
-        setProductsState(JSON.parse(storedData));
-      } else {
-        setProductsState(MOCK_PRODUCTS);
-        localStorage.setItem(storageKey, JSON.stringify(MOCK_PRODUCTS));
-      }
+    const storedData = localStorage.getItem(STORAGE_KEY);
+    if (storedData) {
+      setProductsState(JSON.parse(storedData));
     } else {
-      setProductsState([]);
+      setProductsState(MOCK_PRODUCTS);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(MOCK_PRODUCTS));
     }
-  }, [user]);
+  }, []);
 
   const saveProducts = (newProducts: Product[]) => {
     setProductsState(newProducts);
-    if (user) {
-      const storageKey = `happy_flower_products_${user.id}`;
-      localStorage.setItem(storageKey, JSON.stringify(newProducts));
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newProducts));
   };
 
   const addProduct = (newProductData: Omit<Product, 'id'>) => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ShoppingCart, Settings, Flower2, PackageSearch } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Settings, Flower2, PackageSearch, Wallet } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -51,6 +51,16 @@ const Sidebar = () => {
           <PackageSearch className="w-6 h-6 min-w-[24px]" />
           <span className="ml-4 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 delay-75">
             Quản lý kho
+          </span>
+        </Link>
+        <Link 
+          to="/finance" 
+          className={`flex items-center px-6 py-3 transition-all duration-200 whitespace-nowrap overflow-hidden h-12 ${isActive('/finance')}`}
+          title="Quản lý Chi"
+        >
+          <Wallet className="w-6 h-6 min-w-[24px]" />
+          <span className="ml-4 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 delay-75">
+            Quản lý Chi
           </span>
         </Link>
       </nav>
